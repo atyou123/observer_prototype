@@ -11,9 +11,8 @@
 #include <tuple>
 #include <utility>
 
-#include "Channel.h"
 #include "Fallible.h"
-#include "Serialization.h"
+#include "../procedural/types.h"
 
 using namespace std;
 

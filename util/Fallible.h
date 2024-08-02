@@ -49,14 +49,14 @@ template <typename T, typename E> class Result {
         Err,
     };
 
-    static Result MakeSome(T value) {
+    static Result MakeOk(T value) {
         Result res;
         res._flag = Ok;
         res._value = value;
         return res;
     }
 
-    static Result MakeNone(E error) {
+    static Result MakeErr(E error) {
         Result res;
         res._flag = Err;
         res._error = error;

@@ -19,6 +19,19 @@ using namespace std;
 
 // Note: template functions/classes need to be defined in header files and included
 
+/**
+ * The implementation is mostly the same as a subset of Rust channels
+ * - The Channel object is not supposed to be used at all, instead you use the Send and Recv objects initialized using
+ * CreatedChannel<T>()
+ * - multi producer single consumer. If you want to have multiple consumers, simply send the message through multiple
+ * different channels
+ *      - Therefore the Recv object is move only and must be unique like a unique_ptr
+ * - Messages passed through should be moved if they are not stack allocated
+ * - There can be multiple producers (Send), so the object can be copied, when all copies go out of scope the channel
+ * closes and the receiver is notified
+ * - recv throws an exception if the channel is closed alternatively an option can be used
+ */
+
 template <typename T> struct Channel {
     queue<T> _queue;
     condition_variable _condition_variable;
@@ -28,17 +41,11 @@ template <typename T> struct Channel {
 
 template <typename T> class Send {
   public:
-    Send(shared_ptr<Channel<T>> chan) {
-        _chan = chan;
-        _chan->_send_count++;
-    }
+    Send(shared_ptr<Channel<T>> chan) : _chan(chan) { _chan->_send_count++; }
 
     // Move construction copies the Send, need to keep track of the amount of
-    // senders e.g. Send<int> newsend(oldsend);
-    Send(Send &other) {
-        _chan = other._chan;
-        _chan->_send_count++;
-    }
+    // senders
+    Send(Send &other) : _chan(other._chan) { _chan->_send_count++; }
 
     ~Send() {
         size_t res = --_chan->_send_count;
@@ -59,29 +66,9 @@ template <typename T> class Send {
 
 template <typename T> class Recv {
   public:
-    Recv(shared_ptr<Channel<T>> chan) { _chan = chan; }
+    Recv(shared_ptr<Channel<T>> chan) : _chan(chan) {}
 
-    /*
-    Move constructor, called when value is moved
-
-    Example:
-        void consumingfunc(Recv<int> &&moved) {
-            do stuff
-        }
-
-        Recv<int> newrecv = move(oldrecv); // move assignment
-        Recv<int> anothernewone(move(newrecv)); // move construction
-        consumingfunc(move(oldrecv)); // move assignment (function arguments are assigned to local variables within
-    function)
-
-    The std::move function is a cast to an rvalue reference (&&). When a && ref is passed into the constructor C++
-    automatically calls this function
-    */
-    Recv(Recv &&old) {
-        _chan = old._chan;
-        // The old copy of the struct is destroyed/invalidated, accessing will result in null pointer error
-        old._chan = nullptr;
-    }
+    Recv(Recv &&old) : _chan(old._chan) { old._chan = nullptr; }
 
     struct ChannelClosed {};
 
@@ -130,15 +117,6 @@ template <typename T> Send<T> &operator<<(Send<T> &send, T item) {
 template <typename T> Recv<T> &operator>>(Recv<T> &recv, T &dest) {
     dest = recv.recv();
     return recv;
-}
-
-// Does not work
-template <typename T> pair<Send<T>, Recv<T>> Bad() {
-    shared_ptr<Channel<T>> chan = make_shared<Channel<T>>();
-    Send<T> send(chan);
-    Recv<T> recv(chan);
-    pair<Send<T>, Recv<T>> epts(send, recv);
-    return epts;
 }
 
 void ChannelExample();
